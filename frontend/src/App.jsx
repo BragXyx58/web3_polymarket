@@ -4,7 +4,7 @@ import contractAbi from './Contract.json';
 import './App.css';
 
 const API_URL = 'http://localhost:5197/api'; 
-const CONTRACT_ADDRESS = '0xc022357c5D92C30c8442daAB1c9d857ED7973359'; 
+const CONTRACT_ADDRESS = '0x28F3A1c8E366a1EAe71f2dBc7fDc45D820661F14'; 
 
 function App() {
   const [view, setView] = useState('home'); 
@@ -14,9 +14,11 @@ function App() {
   const [adminAddress, setAdminAddress] = useState(null);
   
   const [markets, setMarkets] = useState([]);
+  const [marketTab, setMarketTab] = useState('active'); 
+  const [selectedMarket, setSelectedMarket] = useState(null); 
+  const [newMarket, setNewMarket] = useState({ question: '', desc: '', img: '', duration: 86400 });
   const [myBets, setMyBets] = useState([]);
   const [authForm, setAuthForm] = useState({ email: '', password: '', username: '' });
-  const [newMarket, setNewMarket] = useState({ question: '', duration: 86400 });
 
   const initWeb3 = useCallback(async (requestAccess = false) => {
     if (!window.ethereum) return;
@@ -105,6 +107,16 @@ function App() {
     } catch (e) { alert("Ошибка транзакции: " + e.message); }
   };
 
+  const handleCashOut = async (marketId, option) => {
+    try {
+      const tx = await contract.cashOut(marketId, option === 'YES' ? 1 : 2);
+      alert("Оформляем возврат...");
+      await tx.wait();
+      alert("Вы успешно продали ставку (с комиссией 10%)!");
+      window.location.reload();
+    } catch (e) { alert("Ошибка возврата: " + e.message); }
+  };
+
   const claimWinnings = async (marketId) => {
     try {
       const tx = await contract.claimWinnings(marketId);
@@ -114,13 +126,12 @@ function App() {
   };
 
   const handleCreateMarket = async () => {
-    if (!isAdmin) return alert("Только админ может создавать рынки!");
     try {
-      const tx = await contract.createMarket(newMarket.question, newMarket.duration);
+      const tx = await contract.createMarket(newMarket.question, newMarket.desc, newMarket.img, newMarket.duration);
       await tx.wait();
       alert("Событие создано!");
-      setView('home');
-    } catch (e) { alert("Ошибка создания: " + e.message); }
+      window.location.reload();
+    } catch (e) { alert("Ошибка: " + e.message); }
   };
 
   const handleResolveMarket = async (marketId, winningOption) => {
@@ -176,13 +187,40 @@ function App() {
         
         {view === 'home' && (
           <div className="market-list">
-            <h1>Актуальные события</h1>
-            <div className="grid">
-              {markets.map(m => (
-                <MarketCard key={m.id.toString()} market={m} onBet={handleBet} claimWinnings={claimWinnings} />
-              ))}
-              {markets.length === 0 && <p>Событий пока нет...</p>}
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px'}}>
+              <h1 style={{margin: 0}}>События</h1>
+              <div className="tabs">
+                <button className={marketTab === 'active' ? 'tab active' : 'tab'} onClick={() => setMarketTab('active')}>Активные</button>
+                <button className={marketTab === 'archive' ? 'tab active' : 'tab'} onClick={() => setMarketTab('archive')}>Архив</button>
+              </div>
             </div>
+
+            <div className="grid">
+              {markets
+                .filter(m => marketTab === 'active' ? !m.resolved : m.resolved)
+                .map(m => (
+                <MarketCard key={m.id.toString()} market={m} onBet={handleBet} onViewDetails={setSelectedMarket} />
+              ))}
+              {markets.filter(m => marketTab === 'active' ? !m.resolved : m.resolved).length === 0 && (
+                <p style={{color: 'var(--text-muted)'}}>В этой категории пока пусто...</p>
+              )}
+            </div>
+
+            {/* Модальное окно */}
+            {selectedMarket && (
+              <div className="modal-overlay" onClick={() => setSelectedMarket(null)}>
+                <div className="modal-content card" onClick={e => e.stopPropagation()}>
+                  <button className="close-btn" onClick={() => setSelectedMarket(null)}>×</button>
+                  <h2>{selectedMarket.question}</h2>
+                  {selectedMarket.imageUrl && <img src={selectedMarket.imageUrl} alt="Event" className="modal-image"/>}
+                  <p className="modal-desc">{selectedMarket.description || "Описание отсутствует"}</p>
+                  <div className="modal-stats">
+                    <div><strong>Пул:</strong> {ethers.utils.formatEther(selectedMarket.totalPool)} ETH</div>
+                    <div><strong>Завершение:</strong> {new Date(selectedMarket.endTime.toNumber() * 1000).toLocaleString()}</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -208,7 +246,7 @@ function App() {
                <div className="card">
                  <h2>Мои активные ставки</h2>
                  <p style={{color: '#9ca3af', marginBottom: '20px'}}>
-                   Здесь отображается ваша история. Если событие завершено в вашу пользу, нажмите "Забрать".
+                   Здесь отображается ваша история. Если событие завершено в вашу пользу, нажмите "Забрать". Вы также можете продать ставку до завершения события.
                  </p>
                  <div className="bets-list">
                     {myBets.map((b, idx) => {
@@ -227,6 +265,11 @@ function App() {
                             {isResolved && !isWinner && <span className="status-lost">Проигрыш</span>}
                             {isWinner && (
                               <button className="btn-claim" onClick={() => claimWinnings(b.marketId)}>Забрать</button>
+                            )}
+                            {!isResolved && (
+                              <button className="btn-claim" style={{background: '#f59e0b'}} onClick={() => handleCashOut(b.marketId, b.option)}>
+                                Sell (-10%)
+                              </button>
                             )}
                           </div>
                         </div>
@@ -261,9 +304,26 @@ function App() {
 
         {view === 'create' && isAdmin && (
           <div className="create-page card">
-            <h2>Создать событие (Блокчейн)</h2>
-            <input placeholder="Вопрос (например: ETH > $4000 в мае?)" onChange={e => setNewMarket({...newMarket, question: e.target.value})} />
-            <input type="number" placeholder="Длительность (в секундах, напр. 86400 = 1 день)" onChange={e => setNewMarket({...newMarket, duration: e.target.value})} />
+            <h2>Создать событие</h2>
+            <input 
+              placeholder="Вопрос (например: инопланетяне выйдут на контакт в мае?)" 
+              onChange={e => setNewMarket({...newMarket, question: e.target.value})} 
+            />
+            <textarea 
+              placeholder="Подробное описание события..." 
+              rows="4"
+              className="custom-textarea"
+              onChange={e => setNewMarket({...newMarket, desc: e.target.value})} 
+            />
+            <input 
+              placeholder="URL картинки (https://...)" 
+              onChange={e => setNewMarket({...newMarket, img: e.target.value})} 
+            />
+            <input 
+              type="number" 
+              placeholder="Длительность (в секундах, напр. 86400 = 1 день)" 
+              onChange={e => setNewMarket({...newMarket, duration: e.target.value})} 
+            />
             <button className="btn-primary" onClick={handleCreateMarket}>Опубликовать</button>
           </div>
         )}
@@ -287,7 +347,7 @@ function App() {
   );
 }
 
-const MarketCard = ({ market, onBet }) => {
+const MarketCard = ({ market, onBet, onViewDetails }) => {
   const [timeLeft, setTimeLeft] = useState('');
   const [isClosed, setIsClosed] = useState(false);
   const [betAmount, setBetAmount] = useState('0.01');
@@ -296,8 +356,12 @@ const MarketCard = ({ market, onBet }) => {
     const total = parseFloat(ethers.utils.formatEther(market.totalPool));
     const yes = parseFloat(ethers.utils.formatEther(market.poolYes));
     const no = parseFloat(ethers.utils.formatEther(market.poolNo));
-    if (total === 0) return { yes: 2.0, no: 2.0 }; 
-    return { yes: (total / (yes || 0.001)).toFixed(2), no: (total / (no || 0.001)).toFixed(2) };
+    if (total === 0) return { yes: '2.00', no: '2.00', yesPercent: 50 }; 
+    return { 
+      yes: (total / (yes || 0.001)).toFixed(2), 
+      no: (total / (no || 0.001)).toFixed(2),
+      yesPercent: Math.round((yes / total) * 100)
+    };
   };
   const odds = calcOdds();
 
@@ -320,28 +384,37 @@ const MarketCard = ({ market, onBet }) => {
 
   return (
     <div className="market-card card">
-      <div className="category">ПРЕДСКАЗАНИЕ</div>
-      <h3>{market.question}</h3>
-      <div className={isClosed ? "timer closed" : "timer"}>⏱ {timeLeft}</div>
-      <div className="pool-info">Пул: {ethers.utils.formatEther(market.totalPool)} ETH</div>
-      
-      {!market.resolved ? (
-        <>
-          <div className="actions">
-            <button className="btn-yes" disabled={isClosed} onClick={() => onBet(market.id, market.question, 'YES', betAmount)}>
-              ДА ({odds.yes}x)
-            </button>
-            <button className="btn-no" disabled={isClosed} onClick={() => onBet(market.id, market.question, 'NO', betAmount)}>
-              НЕТ ({odds.no}x)
-            </button>
-          </div>
-          {!isClosed && <input type="number" step="0.01" value={betAmount} onChange={(e) => setBetAmount(e.target.value)} style={{marginTop: '15px'}}/>}
-        </>
-      ) : (
-        <div className="resolved-panel">
-          <h4>Победил вариант: {market.winningOption === 1 ? 'ДА' : 'НЕТ'}</h4>
+      {market.imageUrl && <div className="market-image" style={{backgroundImage: `url(${market.imageUrl})`}}></div>}
+      <div className="market-content">
+        <div className="category">ПРЕДСКАЗАНИЕ <span className="info-btn" onClick={() => onViewDetails(market)}>ℹ️ Подробнее</span></div>
+        <h3>{market.question}</h3>
+        <div className={isClosed ? "timer closed" : "timer"}>⏱ {timeLeft}</div>
+        
+        <div className="probability-bar">
+           <div className="prob-yes" style={{width: `${odds.yesPercent}%`}}>ДА {odds.yesPercent}%</div>
+           <div className="prob-no" style={{width: `${100 - odds.yesPercent}%`}}>НЕТ {100 - odds.yesPercent}%</div>
         </div>
-      )}
+        
+        <div className="pool-info">Пул: {ethers.utils.formatEther(market.totalPool)} ETH</div>
+        
+        {!market.resolved ? (
+          <>
+            <div className="actions">
+              <button className="btn-yes" disabled={isClosed} onClick={() => onBet(market.id, market.question, 'YES', betAmount)}>
+                ДА ({odds.yes}x)
+              </button>
+              <button className="btn-no" disabled={isClosed} onClick={() => onBet(market.id, market.question, 'NO', betAmount)}>
+                НЕТ ({odds.no}x)
+              </button>
+            </div>
+            {!isClosed && <input type="number" step="0.01" value={betAmount} onChange={(e) => setBetAmount(e.target.value)} style={{marginTop: '15px'}}/>}
+          </>
+        ) : (
+          <div className="resolved-panel">
+            <h4>Победил вариант: {market.winningOption === 1 ? 'ДА' : 'НЕТ'}</h4>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
