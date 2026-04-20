@@ -32,7 +32,6 @@ function App() {
         setAccount(_accounts[0]);
         setContract(_contract);
         
-        // Получаем адрес админа из контракта
         const admin = await _contract.admin();
         setAdminAddress(admin.toLowerCase());
       } catch (e) {
@@ -59,7 +58,6 @@ function App() {
     }
   }, [initWeb3]);
 
-  // 2. Загрузка рынков
   useEffect(() => {
     const fetchMarkets = async () => {
       if (!contract) return;
@@ -87,7 +85,6 @@ function App() {
 
   const isAdmin = account && adminAddress && account.toLowerCase() === adminAddress;
 
-  // --- ФУНКЦИИ ---
   const handleBet = async (marketId, title, option, amount) => {
     if (!user) return alert("Пожалуйста, войдите в аккаунт!");
     if (!account) return await initWeb3(true);
@@ -160,7 +157,7 @@ function App() {
   return (
     <div className="poly-app">
       <nav className="header">
-        <div className="logo" onClick={() => setView('home')}>POLY-CLONE</div>
+        <div className="logo" onClick={() => setView('home')}>POLY-MART</div>
         <div className="nav-links">
           <button onClick={() => setView('home')}>Рынки</button>
           {user ? (
@@ -292,7 +289,6 @@ function App() {
   );
 }
 
-// Компонент Карточки
 const MarketCard = ({ market, onBet }) => {
   const [timeLeft, setTimeLeft] = useState('');
   const [isClosed, setIsClosed] = useState(false);
