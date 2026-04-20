@@ -4,7 +4,7 @@ import contractAbi from './Contract.json';
 import './App.css';
 
 const API_URL = 'http://localhost:5197/api'; 
-const CONTRACT_ADDRESS = '0xA40740B0a7B45789aE434cB7006E5c5Fded39732'; 
+const CONTRACT_ADDRESS = '0xc022357c5D92C30c8442daAB1c9d857ED7973359'; 
 
 function App() {
   const [view, setView] = useState('home'); 
@@ -18,7 +18,6 @@ function App() {
   const [authForm, setAuthForm] = useState({ email: '', password: '', username: '' });
   const [newMarket, setNewMarket] = useState({ question: '', duration: 86400 });
 
-  // 1. Инициализация Web3
   const initWeb3 = useCallback(async (requestAccess = false) => {
     if (!window.ethereum) return;
     const provider = new ethers.providers.Web3Provider(window.ethereum);
@@ -73,7 +72,6 @@ function App() {
     fetchMarkets();
   }, [contract, view]);
 
-  // 3. Загрузка данных профиля
   useEffect(() => {
     if (user && view === 'profile') {
       fetch(`${API_URL}/user/bets/${user.email}`)
